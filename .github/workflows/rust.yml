@@ -92,29 +92,63 @@ jobs:
 
     - name: Rename artifacts for unique names
       run: |
+        # List all directories first for debugging
+        echo "Listing artifacts directory structure:"
+        ls -la ./artifacts
+        
+        # Create release assets directory
+        mkdir -p ./release_assets
+        
         for dir in ./artifacts/*; do
           if [ -d "$dir" ]; then
+            echo "\nProcessing directory: $dir"
             # Get the directory name (e.g., hello_action_amd64_windows)
             dir_name=$(basename "$dir")
+            echo "Directory name: $dir_name"
+            
             # Get the artifact file inside
             for file in "$dir"/*; do
               if [ -f "$file" ]; then
+                echo "Found file: $file"
+                # Get just the filename without path
+                filename=$(basename "$file")
+                echo "Filename: $filename"
+                
                 # Get the original file extension
-                ext="${file##*.}"
-                if [ "$ext" = "$file" ]; then
+                ext="${filename##*.}"
+                if [ "$ext" = "$filename" ]; then
                   ext=""
+                  echo "No extension found"
                 else
                   ext=".${ext}"
+                  echo "Extension: $ext"
                 fi
+                
                 # Create new filename with architecture and OS
-                new_name="hello_action_${dir_name#hello_action_}${ext}"
+                # Extract arch and OS from directory name (e.g., amd64_windows from hello_action_amd64_windows)
+                arch_os="${dir_name#hello_action_}"
+                echo "Arch_OS part: $arch_os"
+                new_name="hello_action_${arch_os}${ext}"
+                echo "New name: $new_name"
+                
                 # Rename the file and move it to a flat structure
-                mkdir -p ./release_assets
-                mv "$file" "./release_assets/${new_name}"
+                echo "Moving $file to ./release_assets/$new_name"
+                mv "$file" "./release_assets/$new_name"
+                
+                # Verify the move was successful
+                if [ -f "./release_assets/$new_name" ]; then
+                  echo "✓ Move successful: ./release_assets/$new_name"
+                else
+                  echo "✗ Move failed!"
+                fi
               fi
             done
           fi
         done
+        
+        # List the final release assets
+        echo "\nFinal release assets:"
+        ls -la ./release_assets
       shell: bash
 
     - name: Create Release and Upload Assets
