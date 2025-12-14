@@ -75,7 +75,7 @@ jobs:
       id: get_tag
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: "hello_action_${{ matrix.arch }}_${{ matrix.os_type }}"
         path: ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
@@ -99,7 +99,7 @@ jobs:
         prerelease: false
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: ./artifacts
 
