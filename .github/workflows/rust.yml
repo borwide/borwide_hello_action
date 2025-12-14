@@ -117,11 +117,13 @@ jobs:
           if [ -f "$file" ]; then
             filename=$(basename "$file")
             echo "Uploading $filename..."
-            curl -X POST "${{ steps.create_release.outputs.upload_url }}" \
+            # Replace {?name,label} in upload_url with actual filename
+            upload_url="${{ steps.create_release.outputs.upload_url }}"
+            upload_url=${upload_url/\{?name,label\}/?name=${filename}}
+            curl -X POST "$upload_url" \
               -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary "@$file" \
-              -F "name=$filename"
+              --data-binary "@$file"
           fi
         done
     
