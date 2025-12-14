@@ -90,6 +90,33 @@ jobs:
       with:
         path: ./artifacts
 
+    - name: Rename artifacts for unique names
+      run: |
+        for dir in ./artifacts/*; do
+          if [ -d "$dir" ]; then
+            # Get the directory name (e.g., hello_action_amd64_windows)
+            dir_name=$(basename "$dir")
+            # Get the artifact file inside
+            for file in "$dir"/*; do
+              if [ -f "$file" ]; then
+                # Get the original file extension
+                ext="${file##*.}"
+                if [ "$ext" = "$file" ]; then
+                  ext=""
+                else
+                  ext=".${ext}"
+                fi
+                # Create new filename with architecture and OS
+                new_name="hello_action_${dir_name#hello_action_}${ext}"
+                # Rename the file and move it to a flat structure
+                mkdir -p ./release_assets
+                mv "$file" "./release_assets/${new_name}"
+              fi
+            done
+          fi
+        done
+      shell: bash
+
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v1
       with:
@@ -97,7 +124,7 @@ jobs:
         name: Release ${{ needs.build.outputs.tag_name }}
         draft: false
         prerelease: false
-        files: ./artifacts/*/*
+        files: ./release_assets/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
