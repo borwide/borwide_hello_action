@@ -18,43 +18,44 @@ jobs:
             target: x86_64-pc-windows-msvc
             arch: amd64
             artifact_name: hello_action.exe
+            os_type: windows
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             arch: arm64
             artifact_name: hello_action.exe
+            os_type: windows
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             arch: x64
             artifact_name: hello_action
+            os_type: linux
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             arch: arm64
             artifact_name: hello_action
+            os_type: linux
 
     runs-on: ${{ matrix.os }}
     permissions: write-all
     
     outputs:
       tag_name: ${{ steps.get_tag.outputs.tag }}
-      asset_path: ${{ matrix.asset_path }}
-      asset_name: ${{ matrix.asset_name }}
 
     steps:
     - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Checkout code
-      uses: actions/checkout@v2
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
-        toolchain: stable
-        target: ${{ matrix.target }}
+        targets: ${{ matrix.target }}
         components: rust-src
+
+    - name: Install cross-compilation tools for Linux ARM64
+      if: ${{ matrix.target == 'aarch64-unknown-linux-musl' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+        echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
     - name: Build release
       run: |
@@ -62,18 +63,19 @@ jobs:
         cargo build --release --target ${{ matrix.target }}
       
     - name: Set tag name
-      run: |
-        if [[ $GITHUB_REF == refs/tags/* ]]; then
-          echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
-        else
-          echo "::set-output name=tag::v$(date +%Y%m%d%H%M%S)"
-        fi
       id: get_tag
+      run: |
+        if [ "${GITHUB_REF#refs/tags/}" != "${GITHUB_REF}" ]; then
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=v$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: "hello_action_${{ matrix.arch }}_${{ matrix.os == 'ubuntu-latest' ? 'linux' : 'windows' }}${{ matrix.artifact_name == 'hello_action.exe' ? '.exe' : '' }}"
+        name: "hello_action_${{ matrix.arch }}_${{ matrix.os_type }}"
         path: ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
   release:
@@ -83,35 +85,82 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
     steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.build.outputs.tag_name }}
-        release_name: Release ${{ needs.build.outputs.tag_name }}
-        draft: false
-        prerelease: false
-
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: ./artifacts
 
-    - name: Upload Release Assets
+    - name: Rename artifacts for unique names
       run: |
-        for file in ./artifacts/*/*; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            echo "Uploading $filename..."
-            curl -X POST "${{ steps.create_release.outputs.upload_url }}" \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary "@$file" \
-              -F "name=$filename"
+        # List all directories first for debugging
+        echo "Listing artifacts directory structure:"
+        ls -la ./artifacts
+        
+        # Create release assets directory
+        mkdir -p ./release_assets
+        
+        for dir in ./artifacts/*; do
+          if [ -d "$dir" ]; then
+            echo "\nProcessing directory: $dir"
+            # Get the directory name (e.g., hello_action_amd64_windows)
+            dir_name=$(basename "$dir")
+            echo "Directory name: $dir_name"
+            
+            # Get the artifact file inside
+            for file in "$dir"/*; do
+              if [ -f "$file" ]; then
+                echo "Found file: $file"
+                # Get just the filename without path
+                filename=$(basename "$file")
+                echo "Filename: $filename"
+                
+                # Get the original file extension
+                ext="${filename##*.}"
+                if [ "$ext" = "$filename" ]; then
+                  ext=""
+                  echo "No extension found"
+                else
+                  ext=".${ext}"
+                  echo "Extension: $ext"
+                fi
+                
+                # Create new filename with architecture and OS
+                # Extract arch and OS from directory name (e.g., amd64_windows from hello_action_amd64_windows)
+                arch_os="${dir_name#hello_action_}"
+                echo "Arch_OS part: $arch_os"
+                new_name="hello_action_${arch_os}${ext}"
+                echo "New name: $new_name"
+                
+                # Rename the file and move it to a flat structure
+                echo "Moving $file to ./release_assets/$new_name"
+                mv "$file" "./release_assets/$new_name"
+                
+                # Verify the move was successful
+                if [ -f "./release_assets/$new_name" ]; then
+                  echo "✓ Move successful: ./release_assets/$new_name"
+                else
+                  echo "✗ Move failed!"
+                fi
+              fi
+            done
           fi
         done
+        
+        # List the final release assets
+        echo "\nFinal release assets:"
+        ls -la ./release_assets
+      shell: bash
+
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.build.outputs.tag_name }}
+        name: Release ${{ needs.build.outputs.tag_name }}
+        draft: false
+        prerelease: false
+        files: ./release_assets/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     #- name: copy file via ssh password
     #  uses: appleboy/scp-action@v0.1.4
