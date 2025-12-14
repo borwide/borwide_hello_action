@@ -40,24 +40,14 @@ jobs:
     
     outputs:
       tag_name: ${{ steps.get_tag.outputs.tag }}
-      asset_path: ${{ matrix.asset_path }}
-      asset_name: ${{ matrix.asset_name }}
 
     steps:
     - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Checkout code
-      uses: actions/checkout@v2
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
-        toolchain: stable
-        target: ${{ matrix.target }}
+        targets: ${{ matrix.target }}
         components: rust-src
 
     - name: Install cross-compilation tools for Linux ARM64
@@ -95,37 +85,21 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
     steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.build.outputs.tag_name }}
-        release_name: Release ${{ needs.build.outputs.tag_name }}
-        draft: false
-        prerelease: false
-
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: ./artifacts
 
-    - name: Upload Release Assets
-      run: |
-        for file in ./artifacts/*/*; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            echo "Uploading $filename..."
-            # Replace {?name,label} in upload_url with actual filename
-            upload_url="${{ steps.create_release.outputs.upload_url }}"
-            upload_url=${upload_url/\{?name,label\}/?name=${filename}}
-            curl -X POST "$upload_url" \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary "@$file"
-          fi
-        done
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.build.outputs.tag_name }}
+        name: Release ${{ needs.build.outputs.tag_name }}
+        draft: false
+        prerelease: false
+        files: ./artifacts/*/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     #- name: copy file via ssh password
     #  uses: appleboy/scp-action@v0.1.4
