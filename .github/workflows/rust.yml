@@ -73,13 +73,14 @@ jobs:
         cargo build --release --target ${{ matrix.target }}
       
     - name: Set tag name
-      run: |
-        if [[ $GITHUB_REF == refs/tags/* ]]; then
-          echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
-        else
-          echo "::set-output name=tag::v$(date +%Y%m%d%H%M%S)"
-        fi
       id: get_tag
+      run: |
+        if [ "${GITHUB_REF#refs/tags/}" != "${GITHUB_REF}" ]; then
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=v$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
