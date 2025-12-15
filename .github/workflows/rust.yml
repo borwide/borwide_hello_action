@@ -171,3 +171,41 @@ jobs:
     #    port: 22
     #    source: "./target/x86_64-unknown-linux-musl/release/hello_action"
     #    target: "/root/hello_action"
+
+        
+    - name: Make artifacts executable
+      run: |
+        cp ./release_assets/hello_action_x64_linux ./target/release/hello_action
+        cp ./release_assets/hello_action_arm64_linux ./target/aarch64-unknown-linux-gnu/release/hello_action
+        chmod +x target/release/hello_action
+        chmod +x target/aarch64-unknown-linux-gnu/release/hello_action
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+    
+    - name: Extract metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_HUB_USERNAME }}/hello_action
+        tags: |
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
