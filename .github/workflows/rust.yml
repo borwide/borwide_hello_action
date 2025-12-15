@@ -179,6 +179,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
     steps:
+    - uses: actions/checkout@v3
+
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
@@ -186,8 +188,8 @@ jobs:
        
     - name: Make artifacts executable
       run: |
-        cp ./artifacts/hello_action_x64_linux/hello_action ./target/release/hello_action
-        cp  ./artifacts/hello_action_arm64_linux/hello_action ./target/aarch64-unknown-linux-gnu/release/hello_action
+        install -D ./artifacts/hello_action_x64_linux/hello_action ./target/release/hello_action
+        install -D ./artifacts/hello_action_arm64_linux/hello_action ./target/aarch64-unknown-linux-gnu/release/hello_action
         chmod +x target/release/hello_action
         chmod +x target/aarch64-unknown-linux-gnu/release/hello_action
     
